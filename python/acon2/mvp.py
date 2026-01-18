@@ -1,22 +1,31 @@
-import os, sys
-import warnings
+# import os, sys
+# import warnings
 import numpy as np
-from scipy.stats import multinomial
+# from scipy.stats import multinomial 
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.special import logsumexp
+# from scipy.special import logsumexp
+
+# redundant
+from argparse import Namespace
+from .kf import KF1D
 
 # MVP algorithm for a single group
 class SpecialMVP:
-    def __init__(self, args, model_base):
+    def __init__(self, args: Namespace, model_base: KF1D):
         super().__init__()
         self.args = args
         self.base = model_base
-        self.eta = self.args.eta
-        self.n_bins = self.args.n_bins
-        self.r = 1000 # not sensitive on results
+        self.eta = self.args.eta # 学习率: 学习预测空间的阈值
+        self.n_bins = self.args.n_bins # 将[0,1]离散为多少bin
+        self.r = 1000 # not sensitive on results, 所以选择了固定值
         self.e = 1.0 # not sensitive on results
+
+        #self.norm_func = lambda n: np.sqrt((n+1) * np.power(np.log2(n+2), 1 + self.e))
+        assert(self.e == 1)
+        self.norm_func = lambda n: np.sqrt((n+1) * (np.log2(n+2)**2))
+
         self.reset()
 
 
@@ -26,15 +35,12 @@ class SpecialMVP:
         self.initialized = False
         self.ps = None
 
-        self.thres_cnt = np.zeros(self.n_bins)
-        self.corr_cnt = np.zeros(self.n_bins)
-        #self.norm_func = lambda n: np.sqrt((n+1) * np.power(np.log2(n+2), 1 + self.e))
-        assert(self.e == 1)
-        self.norm_func = lambda n: np.sqrt((n+1) * (np.log2(n+2)**2))
+        self.thres_cnt = np.zeros(self.n_bins) # 累计选中
+        self.corr_cnt = np.zeros(self.n_bins) # 累计奖励
         
         
     def error(self, label):
-        score = self.base.score(label)
+        # score = self.base.score(label) # 没有用到这个score
 
         itv = self.predict()
         if itv[0] <= label and label <= itv[1]:
@@ -49,12 +55,12 @@ class SpecialMVP:
 
     
     def init_or_update(self, label):
-        
         if label is None:
             return
 
         def find_threshold_mvp():
-            
+            # 2sinh(a0)
+            # 和期望的阈值进行比较, 看是否达到了理想的错误率
             w_prev = np.exp( self.eta * self.corr_cnt[0] / self.norm_func(self.thres_cnt[0]) ) - \
                      np.exp(-self.eta * self.corr_cnt[0] / self.norm_func(self.thres_cnt[0]) )
 
@@ -64,7 +70,6 @@ class SpecialMVP:
                 pos = False
 
             for i in range(1, self.n_bins):
-                
                 w_cur = np.exp( self.eta * self.corr_cnt[i] / self.norm_func(self.thres_cnt[i]) ) - \
                         np.exp(-self.eta * self.corr_cnt[i] / self.norm_func(self.thres_cnt[i]) )
 
@@ -93,6 +98,7 @@ class SpecialMVP:
                     
                 w_prev = w_cur
                 
+            # 不存在零点的情况
             if pos:
                 return 1.0
             else:
@@ -101,9 +107,9 @@ class SpecialMVP:
 
         # add noise to
         if not self.initialized:
-            self.base.init_state(label)
+            self.base.init_state(label) # 底层模型初始化
             self.initialized = True
-            self.threshold = find_threshold_mvp()
+            self.threshold = find_threshold_mvp() # 初始化阈值
             print("init th =", self.threshold)
         else:
             

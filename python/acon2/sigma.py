@@ -1,11 +1,19 @@
-import os, sys
-import warnings
+# import os, sys
+# import warnings
 import numpy as np
 
+# redundant
+from argparse import Namespace
+from .kf import KF1D
+
+from typing import Optional
 class OneSigma:
-    def __init__(self, args, model_base):
+    # def __init__(self, args: Namespace, model_base:KF1D):
+    def __init__(self, args: Optional[Namespace]=None, model_base:Optional[KF1D]=None):
         super().__init__()
-        self.args = args
+        if model_base is None:
+            raise ValueError("model_base is required")
+        # self.args = args # 根本用不到啊, 全部放到model_base里面了
         self.base = model_base
         self.reset()
 
@@ -17,14 +25,14 @@ class OneSigma:
         self.ps = None
 
                 
-    def error(self, label):
-        itv = self.predict()
-        if itv[0] <= label and label <= itv[1]:
+    def error(self, label, itv): # label实际的价格值
+        # itv = self.predict()
+        if itv[0] <= label <= itv[1]:
             return 0.0
         else:
             return 1.0
 
-    
+
     def predict(self):
         obs_pred = self.base.predict()
         mu, sig = np.squeeze(obs_pred['mu']), np.sqrt(np.squeeze(obs_pred['cov']))
@@ -33,7 +41,6 @@ class OneSigma:
 
     
     def init_or_update(self, label):
-        
         if label is None:
             return
 
@@ -41,15 +48,14 @@ class OneSigma:
             self.base.init_state(label)
             self.initialized = True
         else:
-            
+            # predict
+            self.ps = self.predict() 
+
             # check error before update
-            err = self.error(label)
+            err = self.error(label=label, itv=self.ps)
             self.n_err += err
             self.n_obs += 1
-            # print(f'MVP: error = {self.n_err}, n = {self.n_obs}')
-            
-            # predict
-            self.ps = self.predict()            
+            # print(f'MVP: error = {self.n_err}, n = {self.n_obs}')           
             
             print(f'[OneSigma] size = {self.ps[1] - self.ps[0]:.4f}, '
                   f'interval = [{self.ps[0]:.4f}, {self.ps[1]:.4f}], obs = {label:.4f}, '

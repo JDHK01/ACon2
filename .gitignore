@@ -1,1 +1,12 @@
 *~
+test.ipynb
+# ================ New ==================
+mytest.*
+mytest.ipynb
+# MYREAD.md
+# MYCHANGE.md
+CLAUDE.md
+AGENTS.md
+__pycache__/
+.DS_Store
+test/

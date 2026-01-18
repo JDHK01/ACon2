@@ -2,8 +2,13 @@ import os, sys
 import numpy as np
 
 
+# redundant
+from argparse import Namespace 
+from .mvp import SpecialMVP
+
+
 class ACon2:
-    def __init__(self, args, models):
+    def __init__(self, args:Namespace, models:dict[str, SpecialMVP]):
         self.args = args
         self.models = models
         self.reset()
@@ -16,16 +21,17 @@ class ACon2:
 
         
     @ property
-    def initialized(self):
+    def initialized(self)->bool:
         return all([self.models[k].initialized for k in self.models.keys()])
 
         
-    def error(self, label):
+    def error(self, label)->float:# 虽然返回的是浮点数, 其实并不是实际的误差
+        # 将中位数作为假定的参考答案, 肯定不准确, 相应的, error也量化了一下
         # assume that the median is the consensued value for our evaluation purpose
         label_c = np.median([label[k] for k in label.keys() if label[k] is not None])
 
         itv, _ = self.predict()
-        if itv[0] <= label_c and label_c <= itv[1]:
+        if itv[0] <= label_c <= itv[1]:
             return 0.0
         else:
             return 1.0
@@ -35,28 +41,32 @@ class ACon2:
         ps = []
         bps = {}
         for k in self.models.keys():
-            ps_k = self.models[k].predict()
+            ps_k = self.models[k].predict() # [low, high]
             
             # add irreducible error
-            if not any(np.isinf(np.abs(ps_k))):
+            if not any(np.isinf(np.abs(ps_k))): # 全都不是无穷
                 m = np.mean(ps_k)
-                d = m - ps_k[0]
+                d = m - ps_k[0] # 利用高斯分布天然的对称性
                 d += self.args.nonconsensus_param
                 ps_k = [m-d, m+d]
 
             bps[k] = ps_k
-            if all(np.isnan(ps_k) == False):
+            if all(np.isnan(ps_k) == False): # 全都不是非数
                 ps.append(ps_k)
 
         if len(ps) - self.args.beta <= 0:
             return [-np.inf, np.inf], bps
         else:
             # vote
-            edges = [p_i for p in ps for p_i in p]
+            # edges = [p_i for p in ps for p_i in p]
+            edges = []
+            for p in ps:
+                for p_i in p:
+                    edges.append(p_i)
             edges_vote = [0]*len(edges)
             for i, e in enumerate(edges):
                 for ps_i in ps:
-                    if ps_i[0] <= e and e <= ps_i[1]:
+                    if ps_i[0] <= e <= ps_i[1]:
                         edges_vote[i] += 1
 
             # interval
